@@ -27,6 +27,7 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
   double? _dragValueMs;
+  String? _lastTrackPath;
 
   static const List<double> _speedSteps = [1.0, 1.25, 1.5, 0.75];
 
@@ -118,11 +119,15 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       );
     }
 
+    if (_lastTrackPath != track.filePath) {
+      _lastTrackPath = track.filePath;
+      _dragValueMs = null;
+    }
+
     final dominantColor =
         ref.watch(currentTrackDominantColorProvider).value ??
-            AppColors.surfaceDeepPlum;
-    final sourceLabel =
-        ref.watch(sourceLabelProvider).value ?? 'Local Storage';
+        AppColors.surfaceDeepPlum;
+    final sourceLabel = ref.watch(sourceLabelProvider).value ?? 'Local Storage';
     final isPlaying = ref.watch(isPlayingProvider).value ?? false;
     final position = ref.watch(positionProvider).value ?? Duration.zero;
     final duration = ref.watch(durationProvider).value ?? track.duration;
@@ -138,8 +143,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     final totalMs = duration.inMilliseconds > 0
         ? duration.inMilliseconds.toDouble()
         : 1.0;
-    final currentMs = _dragValueMs ??
-        position.inMilliseconds.toDouble().clamp(0.0, totalMs);
+    final currentMs =
+        _dragValueMs ?? position.inMilliseconds.toDouble().clamp(0.0, totalMs);
     final displayPosition = Duration(milliseconds: currentMs.round());
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
@@ -155,11 +160,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
             end: Alignment.bottomCenter,
             stops: const [0.0, 0.55, 1.0],
             colors: [
-              Color.lerp(
-                    AppColors.surfaceDeepPlum,
-                    dominantColor,
-                    0.45,
-                  ) ??
+              Color.lerp(AppColors.surfaceDeepPlum, dominantColor, 0.45) ??
                   AppColors.surfaceDeepPlum,
               AppColors.surfaceBase,
               const Color(0xFF100D17),
@@ -188,17 +189,14 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
               bottom: false,
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final artworkSize =
-                      (constraints.maxHeight * 0.33).clamp(210.0, 316.0);
+                  final artworkSize = (constraints.maxHeight * 0.33).clamp(
+                    210.0,
+                    316.0,
+                  );
 
                   return SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      20,
-                      4,
-                      20,
-                      bottomInset + 14,
-                    ),
+                    padding: EdgeInsets.fromLTRB(20, 4, 20, bottomInset + 14),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         minHeight: (constraints.maxHeight - bottomInset - 18)
@@ -261,23 +259,36 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                       color: AppColors.textSecondary,
                                     ),
                                   ),
-                                  GestureDetector(
-                                    onTap: () => Navigator.of(context).push(
-                                      MaterialPageRoute<void>(
-                                        builder: (_) => const SettingsScreen(),
+                                  Semantics(
+                                    button: true,
+                                    label: 'Open Settings',
+                                    child: InkWell(
+                                      customBorder: const CircleBorder(),
+                                      onTap: () => Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => const SettingsScreen(),
+                                        ),
                                       ),
-                                    ),
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: const BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: AppColors.softLavender,
-                                      ),
-                                      child: const Icon(
-                                        Icons.person_rounded,
-                                        size: 18,
-                                        color: Color(0xFF4C007D),
+                                      child: const SizedBox(
+                                        width: 44,
+                                        height: 44,
+                                        child: Center(
+                                          child: DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: AppColors.softLavender,
+                                            ),
+                                            child: SizedBox(
+                                              width: 32,
+                                              height: 32,
+                                              child: Icon(
+                                                Icons.person_rounded,
+                                                size: 18,
+                                                color: Color(0xFF4C007D),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -297,8 +308,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                       decoration: BoxDecoration(
                                         color: AppColors.surfaceContainerHigh
                                             .withValues(alpha: 0.72),
-                                        borderRadius:
-                                            BorderRadius.circular(999),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -398,8 +410,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                         decoration: BoxDecoration(
                                           color: const Color(0xFF100D17)
                                               .withValues(alpha: 0.85),
-                                          borderRadius:
-                                              BorderRadius.circular(999),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
                                         ),
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
@@ -429,27 +442,38 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                     ),
                                     // Top-right Fullscreen Lyrics Shortcut
                                     Positioned(
-                                      right: 12,
-                                      top: 12,
-                                      child: GestureDetector(
-                                        onTap: () => Navigator.of(context).push(
-                                          MaterialPageRoute<void>(
-                                            builder: (_) =>
-                                                const LyricsScreen(),
+                                      right: 8,
+                                      top: 8,
+                                      child: Semantics(
+                                        button: true,
+                                        label: 'Open fullscreen lyrics',
+                                        child: InkWell(
+                                          customBorder: const CircleBorder(),
+                                          onTap: () => Navigator.of(context).push(
+                                            MaterialPageRoute<void>(
+                                              builder: (_) =>
+                                                  const LyricsScreen(),
+                                            ),
                                           ),
-                                        ),
-                                        child: Container(
-                                          width: 34,
-                                          height: 34,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: const Color(0xFF100D17)
-                                                .withValues(alpha: 0.8),
-                                          ),
-                                          child: const Icon(
-                                            Icons.fullscreen_rounded,
-                                            size: 19,
-                                            color: AppColors.textPrimary,
+                                          child: SizedBox(
+                                            width: 44,
+                                            height: 44,
+                                            child: Center(
+                                              child: Container(
+                                                width: 34,
+                                                height: 34,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: const Color(0xFF100D17)
+                                                      .withValues(alpha: 0.8),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.fullscreen_rounded,
+                                                  size: 19,
+                                                  color: AppColors.textPrimary,
+                                                ),
+                                              ),
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -497,26 +521,32 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 10),
-                                  GestureDetector(
-                                    onTap: () => ref
-                                        .read(libraryProvider.notifier)
-                                        .toggleFavorite(track),
-                                    child: Container(
-                                      width: 44,
-                                      height: 44,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: AppColors.surfaceContainerHigh
-                                            .withValues(alpha: 0.85),
-                                      ),
-                                      child: Icon(
-                                        isLiked
-                                            ? Icons.favorite_rounded
-                                            : Icons.favorite_border_rounded,
-                                        color: isLiked
-                                            ? AppColors.softLavender
-                                            : AppColors.textSecondary,
-                                        size: 23,
+                                  Semantics(
+                                    button: true,
+                                    label: isLiked
+                                        ? 'Remove from Liked Songs'
+                                        : 'Add to Liked Songs',
+                                    child: GestureDetector(
+                                      onTap: () => ref
+                                          .read(libraryProvider.notifier)
+                                          .toggleFavorite(track),
+                                      child: Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: AppColors.surfaceContainerHigh
+                                              .withValues(alpha: 0.85),
+                                        ),
+                                        child: Icon(
+                                          isLiked
+                                              ? Icons.favorite_rounded
+                                              : Icons.favorite_border_rounded,
+                                          color: isLiked
+                                              ? AppColors.softLavender
+                                              : AppColors.textSecondary,
+                                          size: 23,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -550,16 +580,19 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                   onChanged: (val) =>
                                       setState(() => _dragValueMs = val),
                                   onChangeEnd: (val) async {
-                                    setState(() => _dragValueMs = null);
                                     await handler.seek(
                                       Duration(milliseconds: val.round()),
                                     );
+                                    if (mounted) {
+                                      setState(() => _dragValueMs = null);
+                                    }
                                   },
                                 ),
                               ),
                               Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
                                 child: Row(
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
@@ -632,39 +665,43 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                       color: AppColors.textOnSurface,
                                     ),
                                   ),
-                                  GestureDetector(
-                                    onTap: () => isPlaying
-                                        ? handler.pause()
-                                        : handler.play(),
-                                    child: Container(
-                                      width: 64,
-                                      height: 64,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: const LinearGradient(
-                                          begin: Alignment.bottomLeft,
-                                          end: Alignment.topRight,
-                                          colors: [
-                                            AppColors.badgeContainer,
-                                            AppColors.primaryAccent,
-                                            AppColors.softLavender,
+                                  Semantics(
+                                    button: true,
+                                    label: isPlaying ? 'Pause' : 'Play',
+                                    child: GestureDetector(
+                                      onTap: () => isPlaying
+                                          ? handler.pause()
+                                          : handler.play(),
+                                      child: Container(
+                                        width: 64,
+                                        height: 64,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          gradient: const LinearGradient(
+                                            begin: Alignment.bottomLeft,
+                                            end: Alignment.topRight,
+                                            colors: [
+                                              AppColors.badgeContainer,
+                                              AppColors.primaryAccent,
+                                              AppColors.softLavender,
+                                            ],
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppColors.primaryAccent
+                                                  .withValues(alpha: 0.55),
+                                              blurRadius: 24,
+                                              offset: const Offset(0, 6),
+                                            ),
                                           ],
                                         ),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: AppColors.primaryAccent
-                                                .withValues(alpha: 0.55),
-                                            blurRadius: 24,
-                                            offset: const Offset(0, 6),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Icon(
-                                        isPlaying
-                                            ? Icons.pause_rounded
-                                            : Icons.play_arrow_rounded,
-                                        color: Colors.white,
-                                        size: 36,
+                                        child: Icon(
+                                          isPlaying
+                                              ? Icons.pause_rounded
+                                              : Icons.play_arrow_rounded,
+                                          color: Colors.white,
+                                          size: 36,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -707,8 +744,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                       decoration: BoxDecoration(
                                         color: AppColors.surfaceContainerHigh
                                             .withValues(alpha: 0.65),
-                                        borderRadius:
-                                            BorderRadius.circular(999),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -735,8 +773,9 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                     children: [
                                       if (sleepRemaining != null)
                                         Padding(
-                                          padding:
-                                              const EdgeInsets.only(right: 8),
+                                          padding: const EdgeInsets.only(
+                                            right: 8,
+                                          ),
                                           child: Text(
                                             formatDuration(sleepRemaining),
                                             style: AppTheme.tabularTimeStyle(
@@ -796,22 +835,32 @@ class _CircleActionIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: tooltip,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: active
-                ? AppColors.primaryAccent.withValues(alpha: 0.25)
-                : AppColors.surfaceContainerHigh.withValues(alpha: 0.65),
-          ),
-          child: Icon(
-            icon,
-            size: 17,
-            color: active ? AppColors.softLavender : AppColors.textSecondary,
+      child: Semantics(
+        button: true,
+        label: tooltip,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Center(
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active
+                      ? AppColors.primaryAccent.withValues(alpha: 0.25)
+                      : AppColors.surfaceContainerHigh.withValues(alpha: 0.65),
+                ),
+                child: Icon(
+                  icon,
+                  size: 17,
+                  color: active ? AppColors.softLavender : AppColors.textSecondary,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -947,10 +996,7 @@ class _RepeatControlButton extends StatelessWidget {
   final LoopMode loopMode;
   final VoidCallback onTap;
 
-  const _RepeatControlButton({
-    required this.loopMode,
-    required this.onTap,
-  });
+  const _RepeatControlButton({required this.loopMode, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -987,11 +1033,8 @@ class _LyricsPreviewCard extends ConsumerWidget {
   const _LyricsPreviewCard({required this.track});
 
   void _openFullLyrics(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const LyricsScreen(),
-      ),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const LyricsScreen()));
   }
 
   @override
@@ -1009,10 +1052,7 @@ class _LyricsPreviewCard extends ConsumerWidget {
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xE624163B),
-              Color(0xF2181226),
-            ],
+            colors: [Color(0xE624163B), Color(0xF2181226)],
           ),
           border: Border.all(
             color: AppColors.primaryAccent.withValues(alpha: 0.25),
@@ -1091,8 +1131,9 @@ class _LyricsPreviewCard extends ConsumerWidget {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceContainerHigh
-                            .withValues(alpha: 0.85),
+                        color: AppColors.surfaceContainerHigh.withValues(
+                          alpha: 0.85,
+                        ),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: const Row(

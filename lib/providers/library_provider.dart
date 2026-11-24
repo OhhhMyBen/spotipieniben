@@ -65,6 +65,7 @@ class LibraryState {
 
 class LibraryNotifier extends Notifier<LibraryState> {
   bool _initialized = false;
+  bool _pendingRescan = false;
 
   @override
   LibraryState build() {
@@ -121,7 +122,10 @@ class LibraryNotifier extends Notifier<LibraryState> {
   }
 
   Future<void> rescanLibrary() async {
-    if (state.isScanning) return;
+    if (state.isScanning) {
+      _pendingRescan = true;
+      return;
+    }
     state = state.copyWith(isScanning: true, errorMessage: null);
 
     try {
@@ -147,6 +151,11 @@ class LibraryNotifier extends Notifier<LibraryState> {
         isLoading: false,
         errorMessage: 'Failed to scan local audio: $e',
       );
+    } finally {
+      if (_pendingRescan) {
+        _pendingRescan = false;
+        unawaited(rescanLibrary());
+      }
     }
   }
 

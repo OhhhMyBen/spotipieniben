@@ -65,12 +65,34 @@ class SongTrack {
         return 'FLAC Lossless';
       case 'WAV':
         return 'WAV PCM';
+      case 'AIFF':
+      case 'AIF':
+        return 'AIFF Lossless';
+      case 'ALAC':
+        return 'ALAC Lossless';
       case 'M4A':
+      case 'M4B':
+      case 'M4P':
         return 'AAC / ALAC';
+      case 'AAC':
+        return 'AAC Audio';
+      case 'OPUS':
+        return 'Opus Audio';
       case 'OGG':
+      case 'OGA':
         return 'OGG Vorbis';
-      default:
+      case 'WEBM':
+        return 'WebM Audio';
+      case 'WMA':
+        return 'WMA Audio';
+      case 'AMR':
+        return 'AMR Audio';
+      case 'MKA':
+        return 'Matroska Audio';
+      case 'MP3':
         return 'MP3 Audio';
+      default:
+        return ext.isEmpty ? 'Local Audio' : '$ext Audio';
     }
   }
 

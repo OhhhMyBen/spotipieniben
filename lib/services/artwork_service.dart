@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -16,14 +17,57 @@ import '../theme/app_theme.dart';
 class ArtworkService {
   ArtworkService(this._audioQuery);
 
+  static const int maxMemoryEntries = 60;
+  static const int maxMemoryBytes = 24 * 1024 * 1024; // 24 MB cap
+  static const int maxColorEntries = 120;
+
   final OnAudioQuery _audioQuery;
-  final Map<int, Uint8List?> _memoryCache = {};
-  final Map<int, Color> _dominantColorCache = {};
+  final LinkedHashMap<int, Uint8List?> _memoryCache = LinkedHashMap();
+  final LinkedHashMap<int, Color> _dominantColorCache = LinkedHashMap();
   final Map<int, Future<Uint8List?>> _inFlight = {};
+  int _memoryCacheBytes = 0;
+
+  void _putMemoryCache(int trackId, Uint8List? bytes) {
+    final existing = _memoryCache.remove(trackId);
+    if (existing != null) {
+      _memoryCacheBytes -= existing.length;
+    }
+
+    // Do not cache single images larger than 4 MB in RAM.
+    if (bytes != null && bytes.length > 4 * 1024 * 1024) {
+      return;
+    }
+
+    _memoryCache[trackId] = bytes;
+    if (bytes != null) {
+      _memoryCacheBytes += bytes.length;
+    }
+
+    while (_memoryCache.length > maxMemoryEntries ||
+        _memoryCacheBytes > maxMemoryBytes) {
+      if (_memoryCache.isEmpty) break;
+      final oldestKey = _memoryCache.keys.first;
+      final removed = _memoryCache.remove(oldestKey);
+      if (removed != null) {
+        _memoryCacheBytes -= removed.length;
+      }
+    }
+  }
+
+  void _putColorCache(int trackId, Color color) {
+    _dominantColorCache.remove(trackId);
+    _dominantColorCache[trackId] = color;
+    while (_dominantColorCache.length > maxColorEntries) {
+      _dominantColorCache.remove(_dominantColorCache.keys.first);
+    }
+  }
 
   Future<Uint8List?> getArtworkBytes(SongTrack track, {int size = 500}) {
     if (_memoryCache.containsKey(track.id)) {
-      return Future.value(_memoryCache[track.id]);
+      // Refresh LRU recency
+      final cached = _memoryCache.remove(track.id);
+      _memoryCache[track.id] = cached;
+      return Future.value(cached);
     }
     return _inFlight.putIfAbsent(track.id, () async {
       try {
@@ -43,8 +87,8 @@ class ArtworkService {
           // Fall back to MediaStore artwork query
         }
 
-        // Fall back to MediaStore artwork query
-        if (bytes == null || bytes.isEmpty) {
+        // Fall back to MediaStore artwork query (only for positive MediaStore IDs)
+        if ((bytes == null || bytes.isEmpty) && track.id > 0) {
           bytes = await _audioQuery.queryArtwork(
             track.id,
             ArtworkType.AUDIO,
@@ -64,11 +108,11 @@ class ArtworkService {
           );
         }
 
-        _memoryCache[track.id] =
-            (bytes != null && bytes.isNotEmpty) ? bytes : null;
-        return _memoryCache[track.id];
+        final result = (bytes != null && bytes.isNotEmpty) ? bytes : null;
+        _putMemoryCache(track.id, result);
+        return result;
       } catch (_) {
-        _memoryCache[track.id] = null;
+        _putMemoryCache(track.id, null);
         return null;
       } finally {
         _inFlight.remove(track.id);
@@ -158,7 +202,7 @@ class ArtworkService {
       final blended =
           Color.lerp(avgColor, AppColors.lyricsFullBackdrop, 0.42) ??
               AppColors.surfaceDeepPlum;
-      _dominantColorCache[track.id] = blended;
+      _putColorCache(track.id, blended);
       return blended;
     } catch (_) {
       return AppColors.surfaceDeepPlum;
@@ -184,6 +228,7 @@ class ArtworkService {
 
   Future<void> clearCache() async {
     _memoryCache.clear();
+    _memoryCacheBytes = 0;
     _dominantColorCache.clear();
     try {
       final dir = await getTemporaryDirectory();

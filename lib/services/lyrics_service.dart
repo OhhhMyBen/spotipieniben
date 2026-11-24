@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 import '../models/lyric_line.dart';
 import '../models/song_track.dart';
@@ -14,6 +15,38 @@ class LyricsService {
   LyricsService(this._storage);
 
   final StorageService _storage;
+
+  /// Maximum allowed size for an imported `.lrc` / `.txt` lyrics file (1 MB).
+  static const int maxLrcFileBytes = 1024 * 1024;
+
+  static const Set<String> allowedLrcExtensions = {'.lrc', '.txt'};
+
+  /// Validates that an imported lyrics file has an allowed extension and safe size.
+  static String? validateLrcImport({
+    required String filePath,
+    required int sizeBytes,
+  }) {
+    final ext = p.extension(filePath).toLowerCase();
+    if (!allowedLrcExtensions.contains(ext)) {
+      return 'Only .lrc or .txt lyrics files are supported.';
+    }
+    if (sizeBytes <= 0) {
+      return 'Selected lyrics file is empty.';
+    }
+    if (sizeBytes > maxLrcFileBytes) {
+      return 'Lyrics file is too large (max 1 MB).';
+    }
+    return null;
+  }
+
+  /// Checks whether raw bytes look like binary data (contains NUL byte).
+  static bool looksLikeBinary(List<int> bytes) {
+    final sampleLen = bytes.length < 4096 ? bytes.length : 4096;
+    for (int i = 0; i < sampleLen; i++) {
+      if (bytes[i] == 0) return true;
+    }
+    return false;
+  }
 
   // Matches [mm:ss.xx], [mm:ss.xxx], or [mm:ss]
   static final RegExp _timestampRegex = RegExp(
@@ -216,26 +249,66 @@ class LyricsService {
     );
   }
 
-  /// Opens the native file picker to manually associate a `.lrc` file with a track.
+  /// Opens the native file picker to manually associate a `.lrc` or `.txt` file
+  /// with a track. Validates extension, size, and text content, and copies the
+  /// file into persistent app storage so cache cleanup never breaks it.
   Future<TrackLyrics?> importLrcForTrack(SongTrack track) async {
     final picked = await FilePicker.pickFile(
-      dialogTitle: 'Select .lrc lyrics file',
-      type: FileType.any,
+      dialogTitle: 'Select .lrc or .txt lyrics file',
+      type: FileType.custom,
+      allowedExtensions: const ['lrc', 'txt'],
     );
     if (picked == null || picked.path == null) return null;
 
     final file = File(picked.path!);
     if (!await file.exists()) return null;
 
-    final content = await _readFileWithFallbackEncoding(file);
+    final stat = await file.stat();
+    final validationError = validateLrcImport(
+      filePath: file.path,
+      sizeBytes: stat.size,
+    );
+    if (validationError != null) {
+      throw FormatException(validationError);
+    }
+
+    final bytes = await file.readAsBytes();
+    if (looksLikeBinary(bytes)) {
+      throw const FormatException('Selected file does not contain valid text.');
+    }
+
+    String content;
+    try {
+      content = utf8.decode(bytes);
+    } on FormatException {
+      content = latin1.decode(bytes);
+    }
+
+    // Persist a copy in app documents dir so Android cache cleanup never breaks it.
+    String persistedPath = file.path;
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final lrcDir = Directory(p.join(docsDir.path, 'imported_lrc'));
+      if (!await lrcDir.exists()) {
+        await lrcDir.create(recursive: true);
+      }
+      final ext = p.extension(file.path).toLowerCase();
+      final safeName = '${track.filePath.hashCode.abs()}$ext';
+      final dest = File(p.join(lrcDir.path, safeName));
+      await dest.writeAsBytes(bytes, flush: true);
+      persistedPath = dest.path;
+    } catch (_) {
+      // Fall back to original path if documents directory is unavailable
+    }
+
     final parsed = parseLrcText(
       content,
       sourceType: LyricsSourceType.lrc,
-      lrcFilePath: file.path,
+      lrcFilePath: persistedPath,
     );
 
     if (!parsed.isEmpty) {
-      await _storage.saveCustomLrcMapping(track.filePath, file.path);
+      await _storage.saveCustomLrcMapping(track.filePath, persistedPath);
       return parsed;
     }
 
@@ -248,12 +321,12 @@ class LyricsService {
         .toList();
     if (plainLines.isEmpty) return null;
 
-    await _storage.saveCustomLrcMapping(track.filePath, file.path);
+    await _storage.saveCustomLrcMapping(track.filePath, persistedPath);
     return TrackLyrics(
       sourceType: LyricsSourceType.lrc,
       lines: plainLines,
       rawText: content,
-      lrcFilePath: file.path,
+      lrcFilePath: persistedPath,
     );
   }
 }

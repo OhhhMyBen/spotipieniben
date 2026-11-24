@@ -82,19 +82,21 @@ class _SearchTabState extends ConsumerState<SearchTab> {
     }).toList();
 
     final matchingArtists = artists.where((a) {
-      if (q.isEmpty) return false;
+      if (q.isEmpty) return _category == SearchCategory.artists;
       return a.name.toLowerCase().contains(q);
     }).toList();
 
     final matchingAlbums = albums.where((a) {
-      if (q.isEmpty) return false;
+      if (q.isEmpty) return _category == SearchCategory.albums;
       return a.name.toLowerCase().contains(q) ||
           a.artist.toLowerCase().contains(q);
     }).toList();
 
     final showResults = q.isNotEmpty ||
         _category == SearchCategory.hasLyrics ||
-        _category == SearchCategory.lossless;
+        _category == SearchCategory.lossless ||
+        _category == SearchCategory.artists ||
+        _category == SearchCategory.albums;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -370,16 +372,19 @@ class _SearchTabState extends ConsumerState<SearchTab> {
           if ((_category == SearchCategory.all ||
                   _category == SearchCategory.artists) &&
               matchingArtists.isNotEmpty) ...[
-            const Text(
-              'Artists',
-              style: TextStyle(
+            Text(
+              'Artists (${matchingArtists.length})',
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: AppColors.softLavender,
               ),
             ),
             const SizedBox(height: 8),
-            ...matchingArtists.take(5).map(
+            ...(_category == SearchCategory.artists
+                    ? matchingArtists
+                    : matchingArtists.take(5))
+                .map(
                   (artist) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: CircleAvatar(
@@ -425,19 +430,33 @@ class _SearchTabState extends ConsumerState<SearchTab> {
                 ),
             const SizedBox(height: 12),
           ],
+          if (_category == SearchCategory.artists && matchingArtists.isEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: Text(
+                  'No matching local artists',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+            ),
+          ],
           if ((_category == SearchCategory.all ||
                   _category == SearchCategory.albums) &&
               matchingAlbums.isNotEmpty) ...[
-            const Text(
-              'Albums',
-              style: TextStyle(
+            Text(
+              'Albums (${matchingAlbums.length})',
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w700,
                 color: AppColors.softLavender,
               ),
             ),
             const SizedBox(height: 8),
-            ...matchingAlbums.take(5).map(
+            ...(_category == SearchCategory.albums
+                    ? matchingAlbums
+                    : matchingAlbums.take(5))
+                .map(
                   (album) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: ArtworkImage(
@@ -475,6 +494,17 @@ class _SearchTabState extends ConsumerState<SearchTab> {
                   ),
                 ),
             const SizedBox(height: 12),
+          ],
+          if (_category == SearchCategory.albums && matchingAlbums.isEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: Text(
+                  'No matching local albums',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+            ),
           ],
           if (_category == SearchCategory.all ||
               _category == SearchCategory.songs ||

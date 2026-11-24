@@ -14,44 +14,52 @@ Future<void> showCreatePlaylistDialog(
   SongTrack? initialTrack,
 }) async {
   final controller = TextEditingController();
-  final name = await showDialog<String>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('New Playlist'),
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        style: const TextStyle(color: AppColors.textPrimary),
-        decoration: InputDecoration(
-          hintText: 'Playlist name',
-          hintStyle: const TextStyle(color: AppColors.textMuted),
-          filled: true,
-          fillColor: AppColors.surfaceContainer,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
+  final String? name;
+  try {
+    name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Playlist'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (value) => Navigator.pop(ctx, value),
+          style: const TextStyle(color: AppColors.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'Playlist name',
+            hintStyle: const TextStyle(color: AppColors.textMuted),
+            filled: true,
+            fillColor: AppColors.surfaceContainer,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.primaryAccent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Create'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text(
-            'Cancel',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primaryAccent,
-            foregroundColor: Colors.white,
-          ),
-          onPressed: () => Navigator.pop(ctx, controller.text),
-          child: const Text('Create'),
-        ),
-      ],
-    ),
-  );
+    );
+  } finally {
+    controller.dispose();
+  }
 
   if (name == null || name.trim().isEmpty) return;
   final created =

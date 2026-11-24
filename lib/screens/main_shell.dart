@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/song_track.dart';
 import '../providers/app_providers.dart';
 import '../providers/library_provider.dart';
+import '../providers/playback_provider.dart';
 import '../services/permissions_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/floating_mini_player.dart';
@@ -60,6 +61,15 @@ class _MainShellState extends ConsumerState<MainShell>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<String>>(playbackErrorProvider, (_, next) {
+      final message = next.value;
+      if (message != null && message.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(message)));
+      }
+    });
+
     final libState = ref.watch(libraryProvider);
 
     if (libState.isLoading) {
@@ -324,7 +334,7 @@ class _PermissionPromptView extends StatelessWidget {
                   Text(
                     permanentlyDenied
                         ? 'Audio permission was denied. Enable Music & Audio access in system settings so SpotipieNiBen can scan your local files and .lrc lyrics.'
-                        : 'SpotipieNiBen plays 100% offline. Grant local audio access to scan your .mp3, .flac, .m4a, .wav, and .ogg tracks along with synced .lrc lyrics.',
+                        : 'SpotipieNiBen plays 100% offline. Grant local audio access to scan your .mp3, .m4a, .aac, .opus, .flac, .wav, .ogg, and other audio tracks along with synced .lrc lyrics.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 13.5,

@@ -667,7 +667,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
                         ),
                         const SizedBox(height: 6),
                         const Text(
-                          'Add .mp3, .m4a, .flac, .wav, or .ogg files to your device storage or adjust your minimum duration filter in Settings.',
+                          'Add audio files (.mp3, .m4a, .aac, .opus, .flac, .wav, .ogg, etc.) to your device storage or adjust your minimum duration filter in Settings.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: AppColors.textSecondary,

@@ -150,6 +150,9 @@ class FloatingMiniPlayer extends ConsumerWidget {
                             ),
                           ),
                           IconButton(
+                            tooltip: isLiked
+                                ? 'Remove from Liked Songs'
+                                : 'Add to Liked Songs',
                             onPressed: () => ref
                                 .read(libraryProvider.notifier)
                                 .toggleFavorite(track),
@@ -165,30 +168,40 @@ class FloatingMiniPlayer extends ConsumerWidget {
                             visualDensity: VisualDensity.compact,
                           ),
                           const SizedBox(width: 2),
-                          GestureDetector(
-                            onTap: () => isPlaying
-                                ? handler.pause()
-                                : handler.play(),
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: AppColors.primaryAccent,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.primaryAccent
-                                        .withValues(alpha: 0.5),
-                                    blurRadius: 12,
+                          Semantics(
+                            button: true,
+                            label: isPlaying ? 'Pause' : 'Play',
+                            child: GestureDetector(
+                              onTap: () => isPlaying
+                                  ? handler.pause()
+                                  : handler.play(),
+                              child: SizedBox(
+                                width: 44,
+                                height: 44,
+                                child: Center(
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: AppColors.primaryAccent,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primaryAccent
+                                              .withValues(alpha: 0.5),
+                                          blurRadius: 12,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Icon(
+                                      isPlaying
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
                                   ),
-                                ],
-                              ),
-                              child: Icon(
-                                isPlaying
-                                    ? Icons.pause_rounded
-                                    : Icons.play_arrow_rounded,
-                                color: Colors.white,
-                                size: 24,
+                                ),
                               ),
                             ),
                           ),

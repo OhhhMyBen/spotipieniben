@@ -49,7 +49,7 @@ class AppSettings {
   final bool pauseOnHeadsetDisconnect;
 
   const AppSettings({
-    this.minDurationSeconds = 30,
+    this.minDurationSeconds = 0,
     this.excludedFolders = const [],
     this.preferExternalLrc = true,
     this.lyricFontSize = LyricFontSize.medium,
@@ -97,7 +97,7 @@ class AppSettings {
     );
 
     return AppSettings(
-      minDurationSeconds: (json['minDurationSeconds'] as num?)?.toInt() ?? 30,
+      minDurationSeconds: (json['minDurationSeconds'] as num?)?.toInt() ?? 0,
       excludedFolders:
           List<String>.from(json['excludedFolders'] as List? ?? const []),
       preferExternalLrc: json['preferExternalLrc'] as bool? ?? true,

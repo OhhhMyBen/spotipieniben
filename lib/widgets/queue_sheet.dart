@@ -33,6 +33,7 @@ class _QueueSheetBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final queue = ref.watch(queueTracksProvider).value ?? const [];
     final currentTrack = ref.watch(currentTrackProvider).value;
+    final currentQueueIndex = ref.watch(currentQueueIndexProvider).value;
     final isPlaying = ref.watch(isPlayingProvider).value ?? false;
     final sourceLabel =
         ref.watch(sourceLabelProvider).value ?? 'Local Storage';
@@ -104,7 +105,9 @@ class _QueueSheetBody extends ConsumerWidget {
                   },
                   itemBuilder: (context, index) {
                     final track = queue[index];
-                    final isActive = currentTrack?.filePath == track.filePath;
+                    final isActive = currentQueueIndex != null
+                        ? currentQueueIndex == index
+                        : currentTrack?.filePath == track.filePath;
                     return Dismissible(
                       key: ValueKey('${track.filePath}_$index'),
                       direction: DismissDirection.endToStart,

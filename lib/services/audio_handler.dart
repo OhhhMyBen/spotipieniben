@@ -26,6 +26,7 @@ class AuraAudioHandler extends BaseAudioHandler
       BehaviorSubject.seeded(null);
   final BehaviorSubject<String> _sourceLabelSubject =
       BehaviorSubject.seeded('Local Storage');
+  final PublishSubject<String> _errorSubject = PublishSubject<String>();
 
   bool _pauseOnHeadsetDisconnect = true;
   bool _gaplessPlayback = true;
@@ -45,7 +46,9 @@ class AuraAudioHandler extends BaseAudioHandler
 
   Stream<List<SongTrack>> get queueTracksStream => _tracksSubject.stream;
   Stream<SongTrack?> get currentTrackStream => _currentTrackSubject.stream;
+  Stream<int?> get currentIndexStream => _player.currentIndexStream;
   Stream<String> get sourceLabelStream => _sourceLabelSubject.stream;
+  Stream<String> get playbackErrorStream => _errorSubject.stream;
   Stream<Duration> get positionStream => _player.positionStream;
   Stream<Duration?> get durationStream => _player.durationStream;
   Stream<bool> get playingStream => _player.playingStream;
@@ -98,7 +101,12 @@ class AuraAudioHandler extends BaseAudioHandler
       }
     });
 
-    _playbackEventSub = _player.playbackEventStream.listen(_broadcastState);
+    _playbackEventSub = _player.playbackEventStream.listen(
+      _broadcastState,
+      onError: (Object error, StackTrace _) {
+        _emitPlaybackError(error);
+      },
+    );
     _currentIndexSub = _player.currentIndexStream.listen(_onIndexChanged);
     _sequenceSub = _player.sequenceStateStream.listen((seq) {
       if (seq.currentIndex != null) {
@@ -115,6 +123,20 @@ class AuraAudioHandler extends BaseAudioHandler
     _pauseOnHeadsetDisconnect = pauseOnHeadsetDisconnect;
   }
 
+  void _emitPlaybackError(Object error, {String? trackTitle}) {
+    if (_errorSubject.isClosed) return;
+    final label = trackTitle != null ? '"$trackTitle"' : 'this track';
+    if (error is PlayerException) {
+      _errorSubject.add(
+        'Unable to play $label (${error.message ?? 'file missing or unsupported'})',
+      );
+    } else if (error is PlayerInterruptedException) {
+      // Expected when quickly switching tracks; do not spam user
+    } else {
+      _errorSubject.add('Playback error for $label');
+    }
+  }
+
   Future<void> setQueueAndPlay(
     List<SongTrack> tracks, {
     int initialIndex = 0,
@@ -123,6 +145,7 @@ class AuraAudioHandler extends BaseAudioHandler
     if (tracks.isEmpty) return;
 
     final safeIndex = initialIndex.clamp(0, tracks.length - 1);
+    final targetTrack = tracks[safeIndex];
     _sourceLabelSubject.add(sourceLabel);
     _tracksSubject.add(List<SongTrack>.from(tracks));
     queueTitle.add(sourceLabel);
@@ -130,22 +153,24 @@ class AuraAudioHandler extends BaseAudioHandler
     final mediaItems = tracks.map(_toMediaItem).toList();
     queue.add(mediaItems);
 
-    final sources = tracks
-        .map((t) => AudioSource.file(t.filePath, tag: _toMediaItem(t)))
-        .toList();
+    final sources = tracks.map(_toAudioSource).toList();
 
-    final session = await AudioSession.instance;
-    await session.setActive(true);
+    try {
+      final session = await AudioSession.instance;
+      await session.setActive(true);
 
-    await _player.setAudioSources(
-      sources,
-      initialIndex: safeIndex,
-      initialPosition: Duration.zero,
-      preload: _gaplessPlayback,
-    );
+      await _player.setAudioSources(
+        sources,
+        initialIndex: safeIndex,
+        initialPosition: Duration.zero,
+        preload: _gaplessPlayback,
+      );
 
-    await _updateCurrentMediaItem(tracks[safeIndex]);
-    await _player.play();
+      await _updateCurrentMediaItem(targetTrack);
+      await _player.play();
+    } catch (e) {
+      _emitPlaybackError(e, trackTitle: targetTrack.title);
+    }
   }
 
   Future<void> playNext(SongTrack track) async {
@@ -155,17 +180,25 @@ class AuraAudioHandler extends BaseAudioHandler
       return;
     }
 
-    final currentIdx = _player.currentIndex ?? 0;
-    final insertIdx = (currentIdx + 1).clamp(0, list.length);
-    list.insert(insertIdx, track);
+    try {
+      // Disable shuffle when explicitly inserting a track to play next so the
+      // inserted position is guaranteed to be played immediately after current.
+      if (_player.shuffleModeEnabled) {
+        await _player.setShuffleModeEnabled(false);
+      }
+      final currentIdx = _player.currentIndex ?? 0;
+      final insertIdx = (currentIdx + 1).clamp(0, list.length);
+      list.insert(insertIdx, track);
 
-    final item = _toMediaItem(track);
-    _tracksSubject.add(list);
-    queue.add(list.map(_toMediaItem).toList());
-    await _player.insertAudioSource(
-      insertIdx,
-      AudioSource.file(track.filePath, tag: item),
-    );
+      _tracksSubject.add(list);
+      queue.add(list.map(_toMediaItem).toList());
+      await _player.insertAudioSource(
+        insertIdx,
+        _toAudioSource(track),
+      );
+    } catch (e) {
+      _emitPlaybackError(e, trackTitle: track.title);
+    }
   }
 
   Future<void> addToQueue(SongTrack track) async {
@@ -175,13 +208,16 @@ class AuraAudioHandler extends BaseAudioHandler
       return;
     }
 
-    list.add(track);
-    final item = _toMediaItem(track);
-    _tracksSubject.add(list);
-    queue.add(list.map(_toMediaItem).toList());
-    await _player.addAudioSource(
-      AudioSource.file(track.filePath, tag: item),
-    );
+    try {
+      list.add(track);
+      _tracksSubject.add(list);
+      queue.add(list.map(_toMediaItem).toList());
+      await _player.addAudioSource(
+        _toAudioSource(track),
+      );
+    } catch (e) {
+      _emitPlaybackError(e, trackTitle: track.title);
+    }
   }
 
   Future<void> reorderQueue(int oldIndex, int newIndex) async {
@@ -191,11 +227,15 @@ class AuraAudioHandler extends BaseAudioHandler
     final targetIndex = newIndex.clamp(0, list.length - 1);
     if (oldIndex == targetIndex) return;
 
-    final moved = list.removeAt(oldIndex);
-    list.insert(targetIndex, moved);
-    _tracksSubject.add(list);
-    queue.add(list.map(_toMediaItem).toList());
-    await _player.moveAudioSource(oldIndex, targetIndex);
+    try {
+      final moved = list.removeAt(oldIndex);
+      list.insert(targetIndex, moved);
+      _tracksSubject.add(list);
+      queue.add(list.map(_toMediaItem).toList());
+      await _player.moveAudioSource(oldIndex, targetIndex);
+    } catch (e) {
+      _emitPlaybackError(e);
+    }
   }
 
   Future<void> removeFromQueue(int index) async {
@@ -210,10 +250,28 @@ class AuraAudioHandler extends BaseAudioHandler
       return;
     }
 
-    list.removeAt(index);
-    _tracksSubject.add(list);
-    queue.add(list.map(_toMediaItem).toList());
-    await _player.removeAudioSourceAt(index);
+    try {
+      final wasActive = _player.currentIndex == index;
+      list.removeAt(index);
+      _tracksSubject.add(list);
+      queue.add(list.map(_toMediaItem).toList());
+      await _player.removeAudioSourceAt(index);
+      if (wasActive) {
+        final nextIdx = (_player.currentIndex ?? index).clamp(0, list.length - 1);
+        await _updateCurrentMediaItem(list[nextIdx]);
+      }
+    } catch (e) {
+      _emitPlaybackError(e);
+    }
+  }
+
+  AudioSource _toAudioSource(SongTrack track) {
+    final item = _toMediaItem(track);
+    final uri = track.uri;
+    if (uri != null && uri.startsWith('content://')) {
+      return AudioSource.uri(Uri.parse(uri), tag: item);
+    }
+    return AudioSource.file(track.filePath, tag: item);
   }
 
   MediaItem _toMediaItem(SongTrack track) {
@@ -404,6 +462,7 @@ class AuraAudioHandler extends BaseAudioHandler
     await _tracksSubject.close();
     await _currentTrackSubject.close();
     await _sourceLabelSubject.close();
+    await _errorSubject.close();
     await _player.dispose();
   }
 }

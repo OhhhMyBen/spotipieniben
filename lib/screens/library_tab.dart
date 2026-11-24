@@ -12,6 +12,8 @@ import '../widgets/track_tile.dart';
 
 enum LibraryFilterTab { playlists, liked, artists, albums, folders }
 
+enum _DetailCollectionKind { playlist, album, artist, folder, lyrics }
+
 class LibraryTab extends ConsumerStatefulWidget {
   const LibraryTab({super.key});
 
@@ -21,15 +23,17 @@ class LibraryTab extends ConsumerStatefulWidget {
 
 class LibraryTabState extends ConsumerState<LibraryTab> {
   LibraryFilterTab _activeTab = LibraryFilterTab.playlists;
+  _DetailCollectionKind? _detailKind;
   String? _detailTitle;
-  List<SongTrack>? _detailTracks;
+  String? _detailKey;
   String? _detailPlaylistId;
 
   void openAlbum(LocalAlbum album) {
     setState(() {
       _activeTab = LibraryFilterTab.albums;
+      _detailKind = _DetailCollectionKind.album;
       _detailTitle = album.name;
-      _detailTracks = album.tracks;
+      _detailKey = '${album.name}__${album.artist}';
       _detailPlaylistId = null;
     });
   }
@@ -37,8 +41,9 @@ class LibraryTabState extends ConsumerState<LibraryTab> {
   void openArtist(LocalArtist artist) {
     setState(() {
       _activeTab = LibraryFilterTab.artists;
+      _detailKind = _DetailCollectionKind.artist;
       _detailTitle = artist.name;
-      _detailTracks = artist.tracks;
+      _detailKey = artist.name;
       _detailPlaylistId = null;
     });
   }
@@ -72,15 +77,36 @@ class LibraryTabState extends ConsumerState<LibraryTab> {
         allTracks.fold<int>(0, (sum, t) => sum + t.sizeBytes);
     final lrcCount = allTracks.where((t) => t.hasAnyLyrics).length;
 
-    if (_detailTracks != null && _detailTitle != null) {
+    if (_detailKind != null && _detailTitle != null) {
+      final List<SongTrack> resolvedTracks = switch (_detailKind!) {
+        _DetailCollectionKind.playlist => const <SongTrack>[],
+        _DetailCollectionKind.album => albums
+                .where((a) => '${a.name}__${a.artist}' == _detailKey)
+                .firstOrNull
+                ?.tracks ??
+            const <SongTrack>[],
+        _DetailCollectionKind.artist => artists
+                .where((a) => a.name == _detailKey)
+                .firstOrNull
+                ?.tracks ??
+            const <SongTrack>[],
+        _DetailCollectionKind.folder => folders
+                .where((f) => f.path == _detailKey)
+                .firstOrNull
+                ?.tracks ??
+            const <SongTrack>[],
+        _DetailCollectionKind.lyrics =>
+            allTracks.where((t) => t.hasAnyLyrics).toList(),
+      };
       return _DetailCollectionView(
         title: _detailTitle!,
-        tracks: _detailTracks!,
+        tracks: resolvedTracks,
         playlistId: _detailPlaylistId,
         hasMiniPlayer: hasMiniPlayer,
         onBack: () => setState(() {
+          _detailKind = null;
           _detailTitle = null;
-          _detailTracks = null;
+          _detailKey = null;
           _detailPlaylistId = null;
         }),
       );
@@ -245,9 +271,9 @@ class LibraryTabState extends ConsumerState<LibraryTab> {
                 count: '$lrcCount matched',
                 accent: AppColors.tertiaryLilac,
                 onTap: () => setState(() {
+                  _detailKind = _DetailCollectionKind.lyrics;
                   _detailTitle = 'Tracks with Lyrics';
-                  _detailTracks =
-                      allTracks.where((t) => t.hasAnyLyrics).toList();
+                  _detailKey = null;
                   _detailPlaylistId = null;
                 }),
               ),
@@ -445,8 +471,9 @@ class LibraryTabState extends ConsumerState<LibraryTab> {
                 ],
               ),
               onTap: () => setState(() {
+                _detailKind = _DetailCollectionKind.playlist;
                 _detailTitle = pl.name;
-                _detailTracks = plTracks;
+                _detailKey = pl.id;
                 _detailPlaylistId = pl.id;
               }),
             ),
@@ -643,8 +670,9 @@ class LibraryTabState extends ConsumerState<LibraryTab> {
                     ),
               ),
               onTap: () => setState(() {
+                _detailKind = _DetailCollectionKind.folder;
                 _detailTitle = folder.name;
-                _detailTracks = folder.tracks;
+                _detailKey = folder.path;
                 _detailPlaylistId = null;
               }),
             ),

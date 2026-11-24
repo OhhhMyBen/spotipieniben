@@ -14,6 +14,16 @@ final currentTrackProvider = StreamProvider<SongTrack?>((ref) {
   return handler.currentTrackStream;
 });
 
+final currentQueueIndexProvider = StreamProvider<int?>((ref) {
+  final handler = ref.watch(audioHandlerProvider);
+  return handler.currentIndexStream;
+});
+
+final playbackErrorProvider = StreamProvider<String>((ref) {
+  final handler = ref.watch(audioHandlerProvider);
+  return handler.playbackErrorStream;
+});
+
 final queueTracksProvider = StreamProvider<List<SongTrack>>((ref) {
   final handler = ref.watch(audioHandlerProvider);
   return handler.queueTracksStream;
@@ -56,6 +66,7 @@ final playbackSpeedProvider = StreamProvider<double>((ref) {
 
 class SleepTimerNotifier extends Notifier<Duration?> {
   Timer? _timer;
+  DateTime? _endTime;
 
   @override
   Duration? build() {
@@ -66,18 +77,27 @@ class SleepTimerNotifier extends Notifier<Duration?> {
   void setTimer(Duration? duration) {
     _timer?.cancel();
     if (duration == null || duration <= Duration.zero) {
+      _endTime = null;
       state = null;
       return;
     }
+    _endTime = DateTime.now().add(duration);
     state = duration;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      final current = state;
-      if (current == null || current.inSeconds <= 1) {
+      final target = _endTime;
+      if (target == null) {
         t.cancel();
+        state = null;
+        return;
+      }
+      final remaining = target.difference(DateTime.now());
+      if (remaining <= Duration.zero) {
+        t.cancel();
+        _endTime = null;
         state = null;
         ref.read(audioHandlerProvider).pause();
       } else {
-        state = Duration(seconds: current.inSeconds - 1);
+        state = remaining;
       }
     });
   }

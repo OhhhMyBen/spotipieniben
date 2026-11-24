@@ -29,6 +29,7 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
   bool _userScrolling = false;
   Timer? _resumeAutoScrollTimer;
   double? _dragValueMs;
+  String? _lastTrackPath;
 
   @override
   void dispose() {
@@ -41,7 +42,11 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
     return _lineKeys.putIfAbsent(index, () => GlobalKey());
   }
 
-  void _scrollToActiveLine(int index, {bool force = false}) {
+  void _scrollToActiveLine(
+    int index, {
+    bool force = false,
+    int totalLines = 0,
+  }) {
     if (index < 0) return;
     if (_userScrolling && !force) return;
 
@@ -58,8 +63,61 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
           duration: const Duration(milliseconds: 380),
           curve: Curves.easeOutCubic,
         );
+        return;
+      }
+
+      // Fallback when the target lyric line is off-screen and not yet built by
+      // ListView.builder: animate to an estimated scroll offset, then refine.
+      if (_scrollController.hasClients) {
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final estimatedOffset = totalLines > 1
+            ? (maxExtent * (index / (totalLines - 1))).clamp(0.0, maxExtent)
+            : (index * 64.0).clamp(0.0, maxExtent);
+        _scrollController
+            .animateTo(
+          estimatedOffset,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutCubic,
+        )
+            .then((_) {
+          if (!mounted) return;
+          final builtCtx = _lineKeys[index]?.currentContext;
+          if (builtCtx != null && builtCtx.mounted) {
+            Scrollable.ensureVisible(
+              builtCtx,
+              alignment: 0.36,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+            );
+          }
+        });
       }
     });
+  }
+
+  Future<void> _handleImportLrc(SongTrack track) async {
+    try {
+      final ok = await ref
+          .read(lyricsActionsProvider)
+          .importLrcForTrack(track);
+      if (mounted && ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Imported .LRC lyrics file')),
+        );
+      }
+    } on FormatException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to import lyrics file')),
+        );
+      }
+    }
   }
 
   void _onUserScrollNotification(UserScrollNotification notification) {
@@ -92,6 +150,13 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
       );
     }
 
+    if (_lastTrackPath != track.filePath) {
+      _lastTrackPath = track.filePath;
+      _lineKeys.clear();
+      _dragValueMs = null;
+      _userScrolling = false;
+    }
+
     final lyricsAsync = ref.watch(currentTrackLyricsProvider);
     final activeIdx = ref.watch(activeLyricIndexProvider);
     final offsetMs = ref.watch(lyricsOffsetMsProvider);
@@ -106,7 +171,8 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
 
     ref.listen<int>(activeLyricIndexProvider, (prev, next) {
       if (prev != next && next >= 0 && !forceStatic) {
-        _scrollToActiveLine(next);
+        final lineCount = lyricsAsync.value?.lines.length ?? 0;
+        _scrollToActiveLine(next, totalLines: lineCount);
       }
     });
 
@@ -196,18 +262,7 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
                       ),
                       IconButton(
                         tooltip: 'Import .LRC file',
-                        onPressed: () async {
-                          final ok = await ref
-                              .read(lyricsActionsProvider)
-                              .importLrcForTrack(track);
-                          if (context.mounted && ok) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Imported .LRC lyrics file'),
-                              ),
-                            );
-                          }
-                        },
+                        onPressed: () => _handleImportLrc(track),
                         icon: const Icon(
                           Icons.file_upload_outlined,
                           color: AppColors.softLavender,
@@ -279,22 +334,28 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            InkWell(
-                              onTap: () => ref
-                                  .read(lyricsOffsetMsProvider.notifier)
-                                  .nudge(-500),
-                              child: const Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Icon(
-                                  Icons.fast_rewind_rounded,
-                                  size: 16,
-                                  color: AppColors.textSecondary,
+                            Semantics(
+                              button: true,
+                              label: 'Shift lyrics earlier by 0.5 seconds',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(999),
+                                onTap: () => ref
+                                    .read(lyricsOffsetMsProvider.notifier)
+                                    .nudge(-500),
+                                child: const SizedBox(
+                                  width: 36,
+                                  height: 36,
+                                  child: Icon(
+                                    Icons.fast_rewind_rounded,
+                                    size: 18,
+                                    color: AppColors.textSecondary,
+                                  ),
                                 ),
                               ),
                             ),
                             Padding(
                               padding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
+                                  const EdgeInsets.symmetric(horizontal: 4),
                               child: Text(
                                 '${offsetMs > 0 ? '+' : ''}${(offsetMs / 1000).toStringAsFixed(1)}s',
                                 style: AppTheme.tabularTimeStyle(
@@ -303,16 +364,22 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
                                 ),
                               ),
                             ),
-                            InkWell(
-                              onTap: () => ref
-                                  .read(lyricsOffsetMsProvider.notifier)
-                                  .nudge(500),
-                              child: const Padding(
-                                padding: EdgeInsets.all(4),
-                                child: Icon(
-                                  Icons.fast_forward_rounded,
-                                  size: 16,
-                                  color: AppColors.textSecondary,
+                            Semantics(
+                              button: true,
+                              label: 'Shift lyrics later by 0.5 seconds',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(999),
+                                onTap: () => ref
+                                    .read(lyricsOffsetMsProvider.notifier)
+                                    .nudge(500),
+                                child: const SizedBox(
+                                  width: 36,
+                                  height: 36,
+                                  child: Icon(
+                                    Icons.fast_forward_rounded,
+                                    size: 18,
+                                    color: AppColors.textSecondary,
+                                  ),
                                 ),
                               ),
                             ),
@@ -341,18 +408,7 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
                       if (lyrics.isEmpty) {
                         return _EmptyLyricsFallback(
                           track: track,
-                          onImport: () async {
-                            final ok = await ref
-                                .read(lyricsActionsProvider)
-                                .importLrcForTrack(track);
-                            if (context.mounted && ok) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Loaded custom .LRC file'),
-                                ),
-                              );
-                            }
-                          },
+                          onImport: () => _handleImportLrc(track),
                         );
                       }
 
@@ -428,7 +484,11 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
                                 onPressed: () {
                                   _resumeAutoScrollTimer?.cancel();
                                   setState(() => _userScrolling = false);
-                                  _scrollToActiveLine(activeIdx, force: true);
+                                  _scrollToActiveLine(
+                                    activeIdx,
+                                    force: true,
+                                    totalLines: lyrics.lines.length,
+                                  );
                                 },
                                 icon: const Icon(
                                   Icons.my_location_rounded,
@@ -487,10 +547,12 @@ class _LyricsScreenState extends ConsumerState<LyricsScreen> {
                                 onChanged: (val) =>
                                     setState(() => _dragValueMs = val),
                                 onChangeEnd: (val) async {
-                                  setState(() => _dragValueMs = null);
                                   await handler.seek(
                                     Duration(milliseconds: val.round()),
                                   );
+                                  if (mounted) {
+                                    setState(() => _dragValueMs = null);
+                                  }
                                 },
                               ),
                             ),
